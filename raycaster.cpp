@@ -32,7 +32,9 @@ struct Player
 };
 
 constexpr IntVec2 MapDimensions = IntVec2 {10, 10};
-const IntVec2 WindowSize = IntVec2 {640, 480};
+const IntVec2 WindowSize = IntVec2 {960, 480};
+const IntVec2 MapSize = IntVec2 {480, 480};
+const IntVec2 ViewSize = IntVec2 {480, 480};
 const float AngleToRadian = M_PI / 180.0f;
 
 bool done;
@@ -43,7 +45,7 @@ Player player =
     .dimensions = IntVec2 {5, 5},
     .facingAngle = 90.0f,
     .speed = 2.0f,
-    .fov = 10
+    .fov = 15
 };
 
 int map[] = 
@@ -151,8 +153,8 @@ void DrawRect(ScreenBuffer buffer, IntVec2 topLeft, IntVec2 dimensions, Uint32 c
 
 void DrawMap(ScreenBuffer buffer)
 {
-    const int tileWidthToPixel = buffer.width / MapDimensions.y;
-    const int tileHeightToPixel = buffer.height / MapDimensions.x;
+    const int tileWidthToPixel = MapSize.x / MapDimensions.y;
+    const int tileHeightToPixel = MapSize.y / MapDimensions.x;
 
     const Uint32 blockColor = PackColor(128, 0, 0);
     const Uint32 tileColor = PackColor(128, 128, 128);
@@ -177,8 +179,8 @@ void DrawMap(ScreenBuffer buffer)
 
 IntVec2 PixelToTilePosition(ScreenBuffer buffer, int x, int y)
 {
-    const int tileWidthToPixel = buffer.width / MapDimensions.y;
-    const int tileHeightToPixel = buffer.height / MapDimensions.x;
+    const int tileWidthToPixel = MapSize.x / MapDimensions.y;
+    const int tileHeightToPixel = MapSize.y / MapDimensions.x;
 
     int tileX = x / tileWidthToPixel;
     int tileY = y / tileHeightToPixel;
@@ -193,39 +195,62 @@ int GetTileValue(IntVec2 tilePosition)
     return map[tilePosition.x + tilePosition.y * MapDimensions.y];
 }
 
+float Distance(IntVec2 a, IntVec2 b)
+{
+    return sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2));
+}
+
+
+void DrawVerticalLineForFpsView(ScreenBuffer buffer, int rayIndex, float distanceFromObstacle, Uint32 color)
+{
+    for (int y = 0; y < buffer.height; ++y)
+    {
+        SetPixelColor(buffer, IntVec2{MapSize.x + rayIndex, y}, color);
+    }
+}
+
 void DrawPlayer(ScreenBuffer buffer)
 {
     const Uint32 playerColor = PackColor(0, 0, 0);
     const Uint32 headColor = PackColor(64, 64, 64);
     const Uint32 viewColor = PackColor(255, 255, 255);
+    const Uint32 blockColor = PackColor(128, 128, 128);
 
     DrawRect(buffer, player.pixelPosition, player.dimensions, playerColor);
     SetPixelColor(buffer, player.pixelPosition.x + (player.dimensions.x / 2), player.pixelPosition.y, headColor);
     
-    for (int angle = -player.fov/2; angle < player.fov; ++angle)
+    int rayCount = ViewSize.x;
+    int rayLength = 300;
+    for (int rayIndex = 0; rayIndex < rayCount; ++rayIndex)
     {
+        float rayScaler = (float)rayIndex / (float)rayCount;
+        float angle = (player.fov * -0.5f) + (rayScaler * player.fov); 
         float cos = cosf((player.facingAngle + angle) * AngleToRadian);
         float sin = sinf((player.facingAngle + angle) * AngleToRadian);
 
-        for (int i = 0; i < 300; i += 2)
+        for (int i = 0; i < rayLength; i += 2)
         {
             float x = player.pixelPosition.x + cos * i;
             float y = player.pixelPosition.y + sin * i;
-            int pixelLocationX = (int)x;
-            int pixelLocationY = (int)y;
-            auto tilePosition = PixelToTilePosition(buffer, pixelLocationX, pixelLocationY);
+            auto rayPixelPosition = IntVec2{(int)x, (int)y};
+            auto tilePosition = PixelToTilePosition(buffer, rayPixelPosition.x, rayPixelPosition.y);
             auto tile = GetTileValue(tilePosition);
+
             if (tile == 1)
             {
-                SetPixelColor(buffer, x, y, viewColor);
+                SetPixelColor(buffer, rayPixelPosition.x, rayPixelPosition.y, viewColor);
             }
             else
             {
+                float dist = Distance(player.pixelPosition, rayPixelPosition);
+                DrawVerticalLineForFpsView(buffer, rayIndex, dist, blockColor);
                 break;
             }
         }
     }
 }
+
+
 
 int main(int argc, char *argv[])
 {
