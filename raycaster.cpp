@@ -31,11 +31,33 @@ struct Player
     float fov;
 };
 
-constexpr IntVec2 MapDimensions = IntVec2 {10, 10};
-const IntVec2 WindowSize = IntVec2 {960, 480};
-const IntVec2 MapSize = IntVec2 {480, 480};
-const IntVec2 ViewSize = IntVec2 {480, 480};
+struct RayHits
+{
+    struct Data
+    {
+        float distanceFromPlayer;
+        bool wasHit;
+    } 
+    data[480];
+};
+
+constexpr Uint32 PackColor(Uint8 red, Uint8 green, Uint8 blue, Uint8 alpha = 255)
+{ 
+    return ((alpha << 24) | (red << 16) | (green << 8) | blue);
+}
+
+constexpr const IntVec2 MapDimsInTiles = IntVec2 {10, 10};
+
+const Uint32 White = PackColor(255, 255, 255);
+const Uint32 Red = PackColor(128, 0, 0);
+const Uint32 Grey = PackColor(128, 128, 128);
+const Uint32 Black = PackColor(0, 0, 0);
 const float AngleToRadian = M_PI / 180.0f;
+const float RayLength = 300.0f;
+
+const IntVec2 FpsViewDimsInPixels = IntVec2 {480, 480};
+const IntVec2 WindowSize = IntVec2 {960, 480};
+const IntVec2 MapDimsInPixels = IntVec2 {480, 480};
 
 bool done;
 
@@ -112,11 +134,6 @@ void Update(SDL_Window *window, SDL_Renderer *renderer, ScreenBuffer buffer)
     SDL_RenderPresent(renderer);
 }
 
-constexpr Uint32 PackColor(Uint8 red, Uint8 green, Uint8 blue, Uint8 alpha = 255)
-{ 
-    return ((alpha << 24) | (red << 16) | (green << 8) | blue);
-}
-
 
 inline void SetPixelColor(ScreenBuffer buffer, int x, int y, Uint32 color)
 {
@@ -153,25 +170,22 @@ void DrawRect(ScreenBuffer buffer, IntVec2 topLeft, IntVec2 dimensions, Uint32 c
 
 void DrawMap(ScreenBuffer buffer)
 {
-    const int tileWidthToPixel = MapSize.x / MapDimensions.y;
-    const int tileHeightToPixel = MapSize.y / MapDimensions.x;
+    const int tileWidthToPixel = MapDimsInPixels.x / MapDimsInTiles.y;
+    const int tileHeightToPixel = MapDimsInPixels.y / MapDimsInTiles.x;
 
-    const Uint32 blockColor = PackColor(128, 0, 0);
-    const Uint32 tileColor = PackColor(128, 128, 128);
-
-    for (int y = 0; y < MapDimensions.y; ++y)
+    for (int y = 0; y < MapDimsInTiles.y; ++y)
     {
-        for (int x = 0; x < MapDimensions.x; ++x)
+        for (int x = 0; x < MapDimsInTiles.x; ++x)
         {
-            const int tile = map[x + y * MapDimensions.y];
+            const int tile = map[x + y * MapDimsInTiles.y];
 
             if (tile == 1)
             {
-                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, blockColor);
+                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Red);
             }
             else if (tile == 0)
             {
-                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, tileColor);
+                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Grey);
             }
         }
     }
@@ -179,8 +193,8 @@ void DrawMap(ScreenBuffer buffer)
 
 IntVec2 PixelToTilePosition(ScreenBuffer buffer, int x, int y)
 {
-    const int tileWidthToPixel = MapSize.x / MapDimensions.y;
-    const int tileHeightToPixel = MapSize.y / MapDimensions.x;
+    const int tileWidthToPixel = MapDimsInPixels.x / MapDimsInTiles.y;
+    const int tileHeightToPixel = MapDimsInPixels.y / MapDimsInTiles.x;
 
     int tileX = x / tileWidthToPixel;
     int tileY = y / tileHeightToPixel;
@@ -192,7 +206,7 @@ IntVec2 PixelToTilePosition(ScreenBuffer buffer, int x, int y)
 
 int GetTileValue(IntVec2 tilePosition)
 {
-    return map[tilePosition.x + tilePosition.y * MapDimensions.y];
+    return map[tilePosition.x + tilePosition.y * MapDimsInTiles.y];
 }
 
 float Distance(IntVec2 a, IntVec2 b)
@@ -200,27 +214,10 @@ float Distance(IntVec2 a, IntVec2 b)
     return sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2));
 }
 
-
-void DrawVerticalLineForFpsView(ScreenBuffer buffer, int rayIndex, float distanceFromObstacle, Uint32 color)
+void DrawRays(ScreenBuffer buffer, RayHits* hits)
 {
-    for (int y = 0; y < buffer.height; ++y)
-    {
-        SetPixelColor(buffer, IntVec2{MapSize.x + rayIndex, y}, color);
-    }
-}
+    int rayCount = FpsViewDimsInPixels.x;
 
-void DrawPlayer(ScreenBuffer buffer)
-{
-    const Uint32 playerColor = PackColor(0, 0, 0);
-    const Uint32 headColor = PackColor(64, 64, 64);
-    const Uint32 viewColor = PackColor(255, 255, 255);
-    const Uint32 blockColor = PackColor(128, 128, 128);
-
-    DrawRect(buffer, player.pixelPosition, player.dimensions, playerColor);
-    SetPixelColor(buffer, player.pixelPosition.x + (player.dimensions.x / 2), player.pixelPosition.y, headColor);
-    
-    int rayCount = ViewSize.x;
-    int rayLength = 300;
     for (int rayIndex = 0; rayIndex < rayCount; ++rayIndex)
     {
         float rayScaler = (float)rayIndex / (float)rayCount;
@@ -228,7 +225,7 @@ void DrawPlayer(ScreenBuffer buffer)
         float cos = cosf((player.facingAngle + angle) * AngleToRadian);
         float sin = sinf((player.facingAngle + angle) * AngleToRadian);
 
-        for (int i = 0; i < rayLength; i += 2)
+        for (int i = 0; i < RayLength; i += 2)
         {
             float x = player.pixelPosition.x + cos * i;
             float y = player.pixelPosition.y + sin * i;
@@ -238,23 +235,68 @@ void DrawPlayer(ScreenBuffer buffer)
 
             if (tile == 1)
             {
-                SetPixelColor(buffer, rayPixelPosition.x, rayPixelPosition.y, viewColor);
+                SetPixelColor(buffer, rayPixelPosition.x, rayPixelPosition.y, White);
             }
             else
             {
-                float dist = Distance(player.pixelPosition, rayPixelPosition);
-                DrawVerticalLineForFpsView(buffer, rayIndex, dist, blockColor);
+                hits->data[rayIndex].wasHit = true;
+                hits->data[rayIndex].distanceFromPlayer = Distance(player.pixelPosition, rayPixelPosition);
                 break;
             }
         }
     }
 }
 
+void DrawPlayer(ScreenBuffer buffer)
+{
+    DrawRect(buffer, player.pixelPosition, player.dimensions, Black);
+}
 
+void DrawFpsView(ScreenBuffer buffer, RayHits *hits)
+{
+    DrawRect(buffer, IntVec2{MapDimsInPixels.x, 0}, FpsViewDimsInPixels, Red);
+
+    for (int i = 0; i < ArrayCount(hits->data); ++i)
+    {
+        auto ray = hits->data[i];
+        if (ray.wasHit)
+        {
+            float lineSize = 1 - (ray.distanceFromPlayer / RayLength);
+            int halfHeight = (buffer.height / 2);
+            int lineTopY = halfHeight - (lineSize * halfHeight);
+            int lineBottomY = halfHeight + (lineSize * halfHeight);
+            
+            for (int y = halfHeight; y > lineTopY; --y)
+            {
+                float alphaScale =  1.0f - (float) lineTopY / y;
+                Uint8 alpha = (Uint8)(alphaScale * 255);
+                
+                SetPixelColor(buffer, IntVec2{MapDimsInPixels.x + i, y}, PackColor(128, 128, 128, alpha));
+            }
+
+            for (int y = halfHeight; y < lineBottomY; ++y)
+            {
+                float alphaScale = 1.0f - (float) y / lineBottomY;
+                Uint8 alpha = (Uint8)(alphaScale * 255);
+                SetPixelColor(buffer, IntVec2{MapDimsInPixels.x + i, y}, PackColor(128, 128, 128, alpha));
+            }
+        }
+    }
+}
+
+void ClearHits(RayHits *hits)
+{
+    for (int hitIndex = 0; hitIndex < ArrayCount(hits->data); ++hitIndex)
+    {
+        auto* hit = hits->data + hitIndex;
+        hit->wasHit = false;
+        hit->distanceFromPlayer = 0;
+    }
+}
 
 int main(int argc, char *argv[])
 {
-    static_assert(ArrayCount(map) == MapDimensions.y * MapDimensions.x, "Invalid array size.");
+    static_assert(ArrayCount(map) == MapDimsInTiles.y * MapDimsInTiles.x, "Invalid array size.");
     
     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
@@ -291,12 +333,17 @@ int main(int argc, char *argv[])
     buffer.pitch = WindowSize.x * bytesPerPixel;
     buffer.memory = (Uint8 *) malloc(WindowSize.x * WindowSize.y * bytesPerPixel);
 
+    RayHits hits = {0};
+
     done = false;
 
     while (!done)
     {
         DrawMap(buffer);
+        ClearHits(&hits);
+        DrawRays(buffer, &hits);
         DrawPlayer(buffer);
+        DrawFpsView(buffer, &hits);
         Update(window, renderer, buffer);
     }
 
