@@ -16,16 +16,18 @@ struct ScreenBuffer
     Uint8 *memory;
 };
 
-struct IntVec2
+struct Vec2
 {
-    int x;
-    int y;
+    float x;
+    float y;
+
+    constexpr Vec2(float x, float y) : x(x), y(y) {}
 };
 
 struct Player
 {
-    IntVec2 pixelPosition;
-    IntVec2 dimensions;
+    Vec2 pixelPosition;
+    Vec2 dimensions;
     float facingAngle;
     float speed;
     float fov;
@@ -37,52 +39,101 @@ struct RayHits
     {
         float distanceFromPlayer;
         bool wasHit;
+        Uint32 color;
     } 
     data[480];
 };
+
+constexpr const Vec2 FpsViewDimsInPixels = Vec2(480, 480);
+constexpr const Vec2 WindowSize = Vec2(960, 480);
+constexpr const Vec2 MapDimsInPixels = Vec2(480, 480);
+constexpr const Vec2 MapDimsInTiles = Vec2(10, 10);
+constexpr const Vec2 TileDimsInPixels = Vec2(MapDimsInPixels.x / MapDimsInTiles.x, MapDimsInPixels.y / MapDimsInTiles.y);
+
+constexpr Vec2 TileToPixelPosition(Vec2 tileIndex, Vec2 tileDims, Vec2 offset = Vec2(0,0))
+{
+    return Vec2((tileIndex.x * tileDims.x) + offset.x, (tileIndex.y * tileDims.y) + offset.y);
+}
 
 constexpr Uint32 PackColor(Uint8 red, Uint8 green, Uint8 blue, Uint8 alpha = 255)
 { 
     return ((alpha << 24) | (red << 16) | (green << 8) | blue);
 }
 
-constexpr const IntVec2 MapDimsInTiles = IntVec2 {10, 10};
-
 const Uint32 White = PackColor(255, 255, 255);
 const Uint32 Red = PackColor(128, 0, 0);
+const Uint32 Green = PackColor(0, 128, 0);
+const Uint32 Blue = PackColor(0, 0, 128);
 const Uint32 Grey = PackColor(128, 128, 128);
 const Uint32 Black = PackColor(0, 0, 0);
+
 const float AngleToRadian = M_PI / 180.0f;
+const float RadianToAngle = 180.0f / M_PI;
 const float RayLength = 300.0f;
 
-const IntVec2 FpsViewDimsInPixels = IntVec2 {480, 480};
-const IntVec2 WindowSize = IntVec2 {960, 480};
-const IntVec2 MapDimsInPixels = IntVec2 {480, 480};
+enum TileType
+{
+    _ = 0,
+    A = 1,
+    B = 2,
+    C = 3
+};
+
+const TileType Map[] = 
+{
+    A, A, A, A, A, A, A, A, A, A,
+    A, _, _, _, B, _, _, _, _, A,
+    A, _, _, _, B, _, _, _, _, A,
+    A, _, _, _, C, _, _, _, _, A,
+    A, _, B, B, B, B, _, _, _, A,
+    A, _, _, _, _, B, B, B, _, A,
+    A, _, _, _, _, _, _, B, _, A,
+    A, _, _, _, _, _, _, B, _, A,
+    A, B, _, _, _, _, _, _, _, A,
+    A, A, A, A, A, A, A, A, A, A,
+};
 
 bool done;
 
 Player player = 
 {
-    .pixelPosition = IntVec2 {21, 20},
-    .dimensions = IntVec2 {5, 5},
+    .pixelPosition = TileToPixelPosition(Vec2(2, 2), TileDimsInPixels),
+    .dimensions = Vec2 (5, 5),
     .facingAngle = 90.0f,
     .speed = 2.0f,
     .fov = 15
 };
 
-int map[] = 
+inline float DotProduct(Vec2 a, Vec2 b)
 {
-    1, 1, 1, 1, 0, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 0, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 0, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 0, 1, 1, 1, 1, 1,
-    1, 1, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-};
+    auto result = a.x * b.x + a.y * b.y;
+    return result;
+}
+
+inline float Magnitude(Vec2 v)
+{
+    auto result = sqrtf(DotProduct(v, v));
+    return result;
+}
+
+inline Vec2 Normalize(Vec2 v)
+{
+    auto length = Magnitude(v);
+    if (length == 0) 
+    {
+        return Vec2(0, 0);
+    }
+    Vec2 result = Vec2(v.x / length, v.y / length);
+    return result;
+}
+
+float Angle(Vec2 a, Vec2 b)
+{
+    auto normalizedA = Normalize(a);
+    auto normalizedB = Normalize(b);
+    auto result = acosf(DotProduct(normalizedA, normalizedB));
+    return result * RadianToAngle;
+}
 
 void Update(SDL_Window *window, SDL_Renderer *renderer, ScreenBuffer buffer)
 {
@@ -111,19 +162,21 @@ void Update(SDL_Window *window, SDL_Renderer *renderer, ScreenBuffer buffer)
             }
             if (e.key.keysym.sym == SDLK_LEFT)
             {
-                player.pixelPosition.x -= player.speed; 
+                // player.pixelPosition.x -= player.speed; 
             }
             if (e.key.keysym.sym == SDLK_RIGHT)
             {
-                player.pixelPosition.x += player.speed; 
+                // player.pixelPosition.x += player.speed; 
             }
             if (e.key.keysym.sym == SDLK_UP)
             {
-                player.pixelPosition.y -= player.speed;
+                player.pixelPosition.x = player.pixelPosition.x - cosf(player.facingAngle);
+                player.pixelPosition.y = player.pixelPosition.y - sinf(player.facingAngle);
             }
             if (e.key.keysym.sym == SDLK_DOWN)
             {
-                player.pixelPosition.y += player.speed;
+                player.pixelPosition.x = player.pixelPosition.x + cosf(player.facingAngle);
+                player.pixelPosition.y = player.pixelPosition.y + sinf(player.facingAngle);         
             }
             return;
         }
@@ -141,7 +194,15 @@ inline void SetPixelColor(ScreenBuffer buffer, int x, int y, Uint32 color)
     *pixel = color;
 }
 
-inline void SetPixelColor(ScreenBuffer buffer, IntVec2 pixelPosition, Uint32 color)
+inline Uint32 GetPixelColorAt(ScreenBuffer buffer, Vec2 pixelPos)
+{   
+    int x = pixelPos.x;
+    int y = pixelPos.y;
+    Uint32* pixel = (Uint32*) (buffer.memory + (x + y * buffer.width) * buffer.bytesPerPixel);
+    return *pixel;
+}
+
+inline void SetPixelColor(ScreenBuffer buffer, Vec2 pixelPosition, Uint32 color)
 {
     SetPixelColor(buffer, pixelPosition.x, pixelPosition.y, color);
 }
@@ -157,7 +218,7 @@ void FillTileWithColor(ScreenBuffer buffer, int tileX, int tileY, int width, int
     }
 }
 
-void DrawRect(ScreenBuffer buffer, IntVec2 topLeft, IntVec2 dimensions, Uint32 color)
+void DrawRect(ScreenBuffer buffer, Vec2 topLeft, Vec2 dimensions, Uint32 color)
 {
     for (int i = 0; i < dimensions.x; ++i)
     {
@@ -170,28 +231,39 @@ void DrawRect(ScreenBuffer buffer, IntVec2 topLeft, IntVec2 dimensions, Uint32 c
 
 void DrawMap(ScreenBuffer buffer)
 {
+    const int MaxTileY = MapDimsInTiles.y;
+    const int MaxTileX = MapDimsInTiles.x;
     const int tileWidthToPixel = MapDimsInPixels.x / MapDimsInTiles.y;
     const int tileHeightToPixel = MapDimsInPixels.y / MapDimsInTiles.x;
 
-    for (int y = 0; y < MapDimsInTiles.y; ++y)
+    for (int y = 0; y < MaxTileY; ++y)
     {
-        for (int x = 0; x < MapDimsInTiles.x; ++x)
+        for (int x = 0; x < MaxTileX; ++x)
         {
-            const int tile = map[x + y * MapDimsInTiles.y];
+            TileType tile = Map[x + y * MaxTileY];
 
-            if (tile == 1)
+            switch (tile)
             {
-                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Red);
-            }
-            else if (tile == 0)
-            {
+            case _:
                 FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Grey);
+                break;
+            case A:
+                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Black);
+                break;
+            case B:
+                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Red);
+                break;
+            case C:
+                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Blue);
+                break;
+            default:
+                break;
             }
         }
     }
 }
 
-IntVec2 PixelToTilePosition(ScreenBuffer buffer, int x, int y)
+Vec2 PixelToTilePosition(ScreenBuffer buffer, int x, int y)
 {
     const int tileWidthToPixel = MapDimsInPixels.x / MapDimsInTiles.y;
     const int tileHeightToPixel = MapDimsInPixels.y / MapDimsInTiles.x;
@@ -199,17 +271,16 @@ IntVec2 PixelToTilePosition(ScreenBuffer buffer, int x, int y)
     int tileX = x / tileWidthToPixel;
     int tileY = y / tileHeightToPixel;
 
-    IntVec2 result = {tileX, tileY};
-
-    return result;
+    return Vec2(tileX, tileY);
 }
 
-int GetTileValue(IntVec2 tilePosition)
+TileType GetTileValue(Vec2 tilePosition)
 {
-    return map[tilePosition.x + tilePosition.y * MapDimsInTiles.y];
+    int tileIndex = tilePosition.x + tilePosition.y * MapDimsInTiles.y;
+    return Map[tileIndex];
 }
 
-float Distance(IntVec2 a, IntVec2 b)
+float Distance(Vec2 a, Vec2 b)
 {
     return sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2));
 }
@@ -227,20 +298,20 @@ void DrawRays(ScreenBuffer buffer, RayHits* hits)
 
         for (int i = 0; i < RayLength; i += 2)
         {
-            float x = player.pixelPosition.x + cos * i;
-            float y = player.pixelPosition.y + sin * i;
-            auto rayPixelPosition = IntVec2{(int)x, (int)y};
-            auto tilePosition = PixelToTilePosition(buffer, rayPixelPosition.x, rayPixelPosition.y);
-            auto tile = GetTileValue(tilePosition);
+            Vec2 rayPixelPosition = Vec2(player.pixelPosition.x + cos * i, player.pixelPosition.y + sin * i);
+            Vec2 tilePosition = PixelToTilePosition(buffer, rayPixelPosition.x, rayPixelPosition.y);
+            TileType tile = GetTileValue(tilePosition);
 
-            if (tile == 1)
+            if (tile == _)
             {
                 SetPixelColor(buffer, rayPixelPosition.x, rayPixelPosition.y, White);
             }
             else
             {
-                hits->data[rayIndex].wasHit = true;
-                hits->data[rayIndex].distanceFromPlayer = Distance(player.pixelPosition, rayPixelPosition);
+                auto *hitData = &hits->data[rayIndex];
+                hitData->wasHit = true;
+                hitData->distanceFromPlayer = Distance(player.pixelPosition, rayPixelPosition);
+                hitData->color = GetPixelColorAt(buffer, rayPixelPosition);
                 break;
             }
         }
@@ -254,7 +325,7 @@ void DrawPlayer(ScreenBuffer buffer)
 
 void DrawFpsView(ScreenBuffer buffer, RayHits *hits)
 {
-    DrawRect(buffer, IntVec2{MapDimsInPixels.x, 0}, FpsViewDimsInPixels, Red);
+    DrawRect(buffer, Vec2(MapDimsInPixels.x, 0), FpsViewDimsInPixels, Grey);
 
     for (int i = 0; i < ArrayCount(hits->data); ++i)
     {
@@ -268,17 +339,18 @@ void DrawFpsView(ScreenBuffer buffer, RayHits *hits)
             
             for (int y = halfHeight; y > lineTopY; --y)
             {
-                float alphaScale =  1.0f - (float) lineTopY / y;
-                Uint8 alpha = (Uint8)(alphaScale * 255);
-                
-                SetPixelColor(buffer, IntVec2{MapDimsInPixels.x + i, y}, PackColor(128, 128, 128, alpha));
+                // float alphaScale =  1.0f - (float) lineTopY / y;
+                // Uint8 alpha = (Uint8)(alphaScale * 255);
+
+                SetPixelColor(buffer, Vec2(MapDimsInPixels.x + i, y), ray.color);
             }
 
             for (int y = halfHeight; y < lineBottomY; ++y)
             {
-                float alphaScale = 1.0f - (float) y / lineBottomY;
-                Uint8 alpha = (Uint8)(alphaScale * 255);
-                SetPixelColor(buffer, IntVec2{MapDimsInPixels.x + i, y}, PackColor(128, 128, 128, alpha));
+                // float alphaScale = 1.0f - (float) y / lineBottomY;
+                // Uint8 alpha = (Uint8)(alphaScale * 255);
+
+                SetPixelColor(buffer, Vec2(MapDimsInPixels.x + i, y), ray.color);
             }
         }
     }
@@ -291,12 +363,20 @@ void ClearHits(RayHits *hits)
         auto* hit = hits->data + hitIndex;
         hit->wasHit = false;
         hit->distanceFromPlayer = 0;
+        hit->color = Grey;
     }
 }
 
 int main(int argc, char *argv[])
 {
-    static_assert(ArrayCount(map) == MapDimsInTiles.y * MapDimsInTiles.x, "Invalid array size.");
+
+    auto angle1 = Angle(Vec2(0, 1), Vec2(0, 0));
+    auto angle2 = Angle(Vec2(-1, 0), Vec2(0, 0));
+    auto angle3 = Angle(Vec2(1, 0), Vec2(0, 0));
+    auto angle4 = Angle(Vec2(-1, 0), Vec2(0, 0));
+
+
+    static_assert(ArrayCount(Map) == MapDimsInTiles.y * MapDimsInTiles.x, "Invalid array size.");
     
     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
@@ -306,13 +386,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    SDL_Window *window = SDL_CreateWindow("Raycaster", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WindowSize.x, WindowSize.y, 0);
+    auto *window = SDL_CreateWindow("Raycaster", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WindowSize.x, WindowSize.y, 0);
     if (!window)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Window creation fail : %s\n", SDL_GetError());
         return 1;
     }
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+    auto *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if (!renderer)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Render creation for surface fail : %s\n", SDL_GetError());
@@ -321,9 +401,10 @@ int main(int argc, char *argv[])
 
     SDL_RenderClear(renderer);
 
-    const int bytesPerPixel = 4;
     auto *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WindowSize.x, WindowSize.y);
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+
+    const int bytesPerPixel = 4;
 
     ScreenBuffer buffer = {0};
     buffer.texture = texture;

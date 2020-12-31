@@ -3,6 +3,13 @@
 		"ios": "cpp",
 		"__config": "cpp",
 		"__locale": "cpp",
-		"stack": "cpp"
+		"stack": "cpp",
+		"chrono": "cpp",
+		"memory": "cpp",
+		"__cxx_version": "cpp",
+		"__hash_table": "cpp",
+		"deque": "cpp",
+		"functional": "cpp",
+		"type_traits": "cpp"
 	}
 }
