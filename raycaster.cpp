@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include "vec2.h"
 
 template<typename T, int N>
 constexpr int ArrayCount(const T(&)[N])
@@ -15,15 +16,6 @@ struct ScreenBuffer
     int bytesPerPixel;
     Uint8 *memory;
 };
-
-struct Vec2
-{
-    float x;
-    float y;
-
-    constexpr Vec2(float x, float y) : x(x), y(y) {}
-};
-
 struct Player
 {
     Vec2 pixelPosition;
@@ -68,7 +60,6 @@ const Uint32 Grey = PackColor(128, 128, 128);
 const Uint32 Black = PackColor(0, 0, 0);
 
 const float AngleToRadian = M_PI / 180.0f;
-const float RadianToAngle = 180.0f / M_PI;
 const float RayLength = 300.0f;
 
 enum TileType
@@ -104,37 +95,6 @@ Player player =
     .fov = 15
 };
 
-inline float DotProduct(Vec2 a, Vec2 b)
-{
-    auto result = a.x * b.x + a.y * b.y;
-    return result;
-}
-
-inline float Magnitude(Vec2 v)
-{
-    auto result = sqrtf(DotProduct(v, v));
-    return result;
-}
-
-inline Vec2 Normalize(Vec2 v)
-{
-    auto length = Magnitude(v);
-    if (length == 0) 
-    {
-        return Vec2(0, 0);
-    }
-    Vec2 result = Vec2(v.x / length, v.y / length);
-    return result;
-}
-
-float Angle(Vec2 a, Vec2 b)
-{
-    auto normalizedA = Normalize(a);
-    auto normalizedB = Normalize(b);
-    auto result = acosf(DotProduct(normalizedA, normalizedB));
-    return result * RadianToAngle;
-}
-
 void Update(SDL_Window *window, SDL_Renderer *renderer, ScreenBuffer buffer)
 {
     SDL_Event e;
@@ -162,21 +122,27 @@ void Update(SDL_Window *window, SDL_Renderer *renderer, ScreenBuffer buffer)
             }
             if (e.key.keysym.sym == SDLK_LEFT)
             {
-                // player.pixelPosition.x -= player.speed; 
+                float direction = (player.facingAngle - 90.f) * AngleToRadian;
+                Vec2 offset(cosf(direction), sinf(direction));
+                player.pixelPosition += offset;
             }
             if (e.key.keysym.sym == SDLK_RIGHT)
             {
-                // player.pixelPosition.x += player.speed; 
+                float direction = (player.facingAngle + 90.f) * AngleToRadian;
+                Vec2 offset(cosf(direction), sinf(direction));
+                player.pixelPosition += offset;
             }
             if (e.key.keysym.sym == SDLK_UP)
             {
-                player.pixelPosition.x = player.pixelPosition.x - cosf(player.facingAngle);
-                player.pixelPosition.y = player.pixelPosition.y - sinf(player.facingAngle);
+                float direction = player.facingAngle * AngleToRadian;
+                Vec2 offset(cosf(direction), sinf(direction));
+                player.pixelPosition += offset;
             }
             if (e.key.keysym.sym == SDLK_DOWN)
             {
-                player.pixelPosition.x = player.pixelPosition.x + cosf(player.facingAngle);
-                player.pixelPosition.y = player.pixelPosition.y + sinf(player.facingAngle);         
+                float direction = player.facingAngle * AngleToRadian;
+                Vec2 offset(cosf(direction), sinf(direction));
+                player.pixelPosition -= offset;       
             }
             return;
         }
@@ -280,11 +246,6 @@ TileType GetTileValue(Vec2 tilePosition)
     return Map[tileIndex];
 }
 
-float Distance(Vec2 a, Vec2 b)
-{
-    return sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2));
-}
-
 void DrawRays(ScreenBuffer buffer, RayHits* hits)
 {
     int rayCount = FpsViewDimsInPixels.x;
@@ -298,7 +259,7 @@ void DrawRays(ScreenBuffer buffer, RayHits* hits)
 
         for (int i = 0; i < RayLength; i += 2)
         {
-            Vec2 rayPixelPosition = Vec2(player.pixelPosition.x + cos * i, player.pixelPosition.y + sin * i);
+            Vec2 rayPixelPosition(player.pixelPosition.x + cos * i, player.pixelPosition.y + sin * i);
             Vec2 tilePosition = PixelToTilePosition(buffer, rayPixelPosition.x, rayPixelPosition.y);
             TileType tile = GetTileValue(tilePosition);
 
@@ -369,13 +330,6 @@ void ClearHits(RayHits *hits)
 
 int main(int argc, char *argv[])
 {
-
-    auto angle1 = Angle(Vec2(0, 1), Vec2(0, 0));
-    auto angle2 = Angle(Vec2(-1, 0), Vec2(0, 0));
-    auto angle3 = Angle(Vec2(1, 0), Vec2(0, 0));
-    auto angle4 = Angle(Vec2(-1, 0), Vec2(0, 0));
-
-
     static_assert(ArrayCount(Map) == MapDimsInTiles.y * MapDimsInTiles.x, "Invalid array size.");
     
     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
