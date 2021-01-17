@@ -1,6 +1,9 @@
 #include <SDL2/SDL.h>
 #include "vec2.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 template<typename T, int N>
 constexpr int ArrayCount(const T(&)[N])
 {
@@ -34,6 +37,14 @@ struct RayHits
         Uint32 color;
     } 
     data[480];
+};
+
+struct Texture
+{
+    int width;
+    int height;
+    int bytesPerPixel;
+    Uint8* data;
 };
 
 constexpr const Vec2 FpsViewDimsInPixels = Vec2(480, 480);
@@ -92,7 +103,7 @@ Player player =
     .dimensions = Vec2 (5, 5),
     .facingAngle = 90.0f,
     .speed = 2.0f,
-    .fov = 15
+    .fov = 45
 };
 
 void Update(SDL_Window *window, SDL_Renderer *renderer, ScreenBuffer buffer)
@@ -269,9 +280,10 @@ void DrawRays(ScreenBuffer buffer, RayHits* hits)
             }
             else
             {
+                float distance = Distance(player.pixelPosition, rayPixelPosition);
                 auto *hitData = &hits->data[rayIndex];
                 hitData->wasHit = true;
-                hitData->distanceFromPlayer = Distance(player.pixelPosition, rayPixelPosition);
+                hitData->distanceFromPlayer = cosf((angle) * AngleToRadian) * distance;
                 hitData->color = GetPixelColorAt(buffer, rayPixelPosition);
                 break;
             }
@@ -328,6 +340,19 @@ void ClearHits(RayHits *hits)
     }
 }
 
+void DrawTexture(ScreenBuffer buffer, Texture texture)
+{
+    for (int x = 0; x < texture.width; ++x)
+    {
+        for (int y = 0; y < texture.height; ++y)
+        {
+                Uint32 color = *(texture.data + (x + y * texture.width) * texture.bytesPerPixel);
+                SetPixelColor(buffer, Vec2(x, y), color);
+        }
+    }
+}
+
+
 int main(int argc, char *argv[])
 {
     static_assert(ArrayCount(Map) == MapDimsInTiles.y * MapDimsInTiles.x, "Invalid array size.");
@@ -368,6 +393,22 @@ int main(int argc, char *argv[])
     buffer.pitch = WindowSize.x * bytesPerPixel;
     buffer.memory = (Uint8 *) malloc(WindowSize.x * WindowSize.y * bytesPerPixel);
 
+    int imgWidth;
+    int imgHeight;
+    int compsPerPixel;
+
+    Texture imgTexture = {0};
+
+    Uint8 *data = stbi_load("walltext.png", &imgWidth, &imgHeight, &compsPerPixel, 0);
+    if (data)
+    {
+        imgTexture.width = imgWidth;
+        imgTexture.height = imgHeight;
+        imgTexture.bytesPerPixel = compsPerPixel;
+        imgTexture.data = data;
+    }
+
+
     RayHits hits = {0};
 
     done = false;
@@ -379,6 +420,7 @@ int main(int argc, char *argv[])
         DrawRays(buffer, &hits);
         DrawPlayer(buffer);
         DrawFpsView(buffer, &hits);
+        DrawTexture(buffer, imgTexture);
         Update(window, renderer, buffer);
     }
 
