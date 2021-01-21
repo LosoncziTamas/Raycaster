@@ -58,17 +58,25 @@ constexpr Vec2 TileToPixelPosition(Vec2 tileIndex, Vec2 tileDims, Vec2 offset = 
     return Vec2((tileIndex.x * tileDims.x) + offset.x, (tileIndex.y * tileDims.y) + offset.y);
 }
 
-constexpr Uint32 PackColor(Uint8 red, Uint8 green, Uint8 blue, Uint8 alpha = 255)
+constexpr Uint32 PackColorABGR(Uint8 alpha, Uint8 blue, Uint8 green, Uint8 red)
 { 
-    return ((alpha << 24) | (red << 16) | (green << 8) | blue);
+    return ((alpha << 24) | (blue << 16) | (green << 8) | red);
 }
 
-const Uint32 White = PackColor(255, 255, 255);
-const Uint32 Red = PackColor(128, 0, 0);
-const Uint32 Green = PackColor(0, 128, 0);
-const Uint32 Blue = PackColor(0, 0, 128);
-const Uint32 Grey = PackColor(128, 128, 128);
-const Uint32 Black = PackColor(0, 0, 0);
+void UnpackColorABGR(Uint32 color, Uint8 *alpha, Uint8 *blue, Uint8 *green, Uint8 *red)
+{
+    *red = color & 0x000000FF;
+    *green = (color & 0x0000FF00) >> 8;
+    *blue = (color & 0x00FF0000) >> 16;
+    *alpha = (color & 0xFF000000) >> 24;
+}
+
+const Uint32 White = PackColorABGR(255, 255, 255, 255);
+const Uint32 Red = PackColorABGR(255, 0, 0, 128);
+const Uint32 Green = PackColorABGR(255, 0, 128, 0);
+const Uint32 Blue = PackColorABGR(255, 128, 0, 0);
+const Uint32 Grey = PackColorABGR(255, 128, 128, 128);
+const Uint32 Black = PackColorABGR(255, 0, 0, 0);
 
 const float AngleToRadian = M_PI / 180.0f;
 const float RayLength = 300.0f;
@@ -346,8 +354,8 @@ void DrawTexture(ScreenBuffer buffer, Texture texture)
     {
         for (int y = 0; y < texture.height; ++y)
         {
-                Uint32 color = *(texture.data + (x + y * texture.width) * texture.bytesPerPixel);
-                SetPixelColor(buffer, Vec2(x, y), color);
+            Uint32* color = (Uint32*)(texture.data + (x + y * texture.width) * texture.bytesPerPixel);
+            SetPixelColor(buffer, Vec2(x, y), *color);
         }
     }
 }
@@ -380,7 +388,7 @@ int main(int argc, char *argv[])
 
     SDL_RenderClear(renderer);
 
-    auto *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WindowSize.x, WindowSize.y);
+    auto *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, WindowSize.x, WindowSize.y);
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
 
     const int bytesPerPixel = 4;
@@ -399,7 +407,7 @@ int main(int argc, char *argv[])
 
     Texture imgTexture = {0};
 
-    Uint8 *data = stbi_load("walltext.png", &imgWidth, &imgHeight, &compsPerPixel, 0);
+    Uint8 *data = stbi_load("walltext.png", &imgWidth, &imgHeight, &compsPerPixel, STBI_rgb_alpha);
     if (data)
     {
         imgTexture.width = imgWidth;
@@ -407,7 +415,6 @@ int main(int argc, char *argv[])
         imgTexture.bytesPerPixel = compsPerPixel;
         imgTexture.data = data;
     }
-
 
     RayHits hits = {0};
 
