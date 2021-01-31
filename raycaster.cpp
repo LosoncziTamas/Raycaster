@@ -214,7 +214,15 @@ void DrawRect(ScreenBuffer buffer, Vec2 topLeft, Vec2 dimensions, Uint32 color)
     }
 }
 
-void DrawMap(ScreenBuffer buffer)
+Uint32 GetTextureColor(int textureIndex, Texture texture)
+{
+    const int textureWidth = texture.width / 6;
+    const int textureStartX = textureIndex * textureWidth;
+    Uint32* color = (Uint32*)(texture.data + textureStartX * texture.bytesPerPixel);
+    return *color;
+}
+
+void DrawMap(ScreenBuffer buffer, Texture texture)
 {
     const int MaxTileY = MapDimsInTiles.y;
     const int MaxTileX = MapDimsInTiles.x;
@@ -233,13 +241,22 @@ void DrawMap(ScreenBuffer buffer)
                 FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Grey);
                 break;
             case A:
-                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Black);
+                {
+                    Uint32 texColor = GetTextureColor(1, texture);
+                    FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, texColor);
+                } 
                 break;
             case B:
-                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Red);
+                {
+                    Uint32 texColor = GetTextureColor(2, texture);
+                    FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, texColor);
+                } 
                 break;
             case C:
-                FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, Blue);
+                {
+                    Uint32 texColor = GetTextureColor(0, texture);
+                    FillTileWithColor(buffer, x, y, tileWidthToPixel, tileHeightToPixel, texColor);
+                } 
                 break;
             default:
                 break;
@@ -320,8 +337,8 @@ void DrawFpsView(ScreenBuffer buffer, RayHits *hits)
             
             for (int y = halfHeight; y > lineTopY; --y)
             {
-                // float alphaScale =  1.0f - (float) lineTopY / y;
-                // Uint8 alpha = (Uint8)(alphaScale * 255);
+                // float alphaScale = 1.0f - (float) lineTopY / y;
+                // Uint32 alpha = (Uint32)(alphaScale * 255);
 
                 SetPixelColor(buffer, Vec2(MapDimsInPixels.x + i, y), ray.color);
             }
@@ -348,9 +365,14 @@ void ClearHits(RayHits *hits)
     }
 }
 
-void DrawTexture(ScreenBuffer buffer, Texture texture)
+void DrawTexture(ScreenBuffer buffer, Texture texture, int textureIndex)
 {
-    for (int x = 0; x < texture.width; ++x)
+    const int textureWidth = texture.width / 6;
+    const int textureStartX = textureIndex * textureWidth;
+    const int textureEndX = (textureIndex + 1) * textureWidth;
+    assert(textureEndX <= texture.width);
+
+    for (int x = textureStartX ; x < textureEndX; ++x)
     {
         for (int y = 0; y < texture.height; ++y)
         {
@@ -359,7 +381,6 @@ void DrawTexture(ScreenBuffer buffer, Texture texture)
         }
     }
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -422,12 +443,11 @@ int main(int argc, char *argv[])
 
     while (!done)
     {
-        DrawMap(buffer);
+        DrawMap(buffer, imgTexture);
         ClearHits(&hits);
         DrawRays(buffer, &hits);
         DrawPlayer(buffer);
         DrawFpsView(buffer, &hits);
-        DrawTexture(buffer, imgTexture);
         Update(window, renderer, buffer);
     }
 
